@@ -14,7 +14,7 @@ import warnings
 import logging
 import pathlib
 from dataclasses import dataclass
-from typing import List, Tuple
+from typing import List, Tuple, Union, Optional
 
 import numpy as np
 import pandas as pd
@@ -119,7 +119,7 @@ def load_zones_from_csv_bytes(csv_bytes: bytes) -> List[Zone]:
 
 
 @st.cache_data(show_spinner=False)
-def load_zones_from_csv_path(path: str | os.PathLike) -> List[Zone]:
+def load_zones_from_csv_path(path: Union[str, os.PathLike]) -> List[Zone]:
     with open(path, "rb") as f:
         return load_zones_from_csv_bytes(f.read())
 
@@ -228,7 +228,7 @@ def _render_boundaries_png(zonas: List[Zone], title: str = "") -> bytes:
     return buf.getvalue()
 
 
-def _render_choropleth_png(zonas: List[Zone], values: np.ndarray, title: str, vmin=None, vmax=None, cmap_name: str = "Blues", cbar_label: str | None = None) -> bytes:
+def _render_choropleth_png(zonas: List[Zone], values: np.ndarray, title: str, vmin=None, vmax=None, cmap_name: Optional[str] = 'Blues', cbar_label: Optional[str] = None) -> bytes:
     if vmin is None: vmin = float(values.min())
     if vmax is None: vmax = float(values.max() + 1e-9)
     norm = matplotlib.colors.Normalize(vmin=vmin, vmax=vmax)
@@ -411,7 +411,7 @@ def _save_anim_to_mp4_bytes(fig, anim, fps=8, dpi=130, bitrate=1800):
 
 import streamlit.components.v1 as components
 
-def _embed_anim_jshtml(fig, anim, height_px: int | None = None) -> bool:
+def _embed_anim_jshtml(fig, anim, height_px: Union[int, None] = None) -> bool:
     """
     Embed the animation using Matplotlib's JS HTML player.
     Returns True if embedded, False on failure.
@@ -553,21 +553,18 @@ if ejecutar and zonas:
         st.image(_render_boundaries_png(zonas), use_column_width=True)
     vmin, vmax = 0.0, float(max(A0f.max(), A1f.max()) + 1e-9)
     with colB:
-        st.caption("Línea base — Profundidad de inundación acumulada (relativa)")
-        png = _render_choropleth_png(zonas, A0f, "Control: Profundidad final", vmin=vmin, vmax=vmax,
-                                cmap_name="Blues", cbar_label=("Profundidad [mm]" if depth_per_unit_mm>0 else "Profundidad [u]"))
+        st.caption("Línea base — Profundidad de inundación acumulada")
+        png = _render_choropleth_png(zonas, A0f, "Control: Profundidad final", vmin=vmin, vmax=vmax, cmap_name='Blues', cbar_label=("Profundidad [mm]" if depth_per_unit_mm>0 else "Profundidad [u]"))
         st.image(png, use_column_width=True)
         st.download_button("Descargar PNG", data=png, file_name="baseline_final.png", mime="image/png")
     with colC:
-        st.caption("Desazolve — Profundidad de inundación acumulada (relativa)")
-        png = _render_choropleth_png(zonas, A1f, "Desazolve: Profundidad final", vmin=vmin, vmax=vmax,
-                                cmap_name="Blues", cbar_label=("Profundidad [mm]" if depth_per_unit_mm>0 else "Profundidad [u]"))
+        st.caption("Desazolve — Profundidad de inundación acumulada")
+        png = _render_choropleth_png(zonas, A1f, "Desazolve: Profundidad final", vmin=vmin, vmax=vmax, cmap_name='Blues', cbar_label=("Profundidad [mm]" if depth_per_unit_mm>0 else "Profundidad [u]"))
         st.image(png, use_column_width=True)
         st.download_button("Descargar PNG", data=png, file_name="desazolve_final.png", mime="image/png")
     with colD:
         st.caption("Impacto — Reducción (Base − Desazolve)")
-        png = _render_choropleth_png(zonas, impact, "Impacto (Base − Desazolve): Reducción", vmin=0.0, vmax=float(impact.max()+1e-9),
-                                cmap_name="Greens", cbar_label=("Reducción [mm]" if depth_per_unit_mm>0 else "Reducción [u]"))
+        png = _render_choropleth_png(zonas, impact, "Impacto (Base − Desazolve): Reducción", vmin=0.0, vmax=float(impact.max()+1e-9), cmap_name='Greens', cbar_label=("Reducción [mm]" if depth_per_unit_mm>0 else "Reducción [u]"))
         st.image(png, use_column_width=True)
         st.download_button("Descargar PNG", data=png, file_name="impact_reduction.png", mime="image/png")
 
@@ -651,7 +648,7 @@ csv_bytes = resumen.to_csv(index=False).encode('utf-8')
 st.download_button("Descargar CSV del resumen", data=csv_bytes, file_name="resumen_con_unidades.csv", mime="text/csv")
 
     
-    # Optional side-by-side animation — show as VIDEO in the app
+# Optional side-by-side animation — show as VIDEO in the app
 if generar_gif:
     st.subheader("Relleno lado a lado: Base (izquierda) vs Desazolve (derecha)")
 
@@ -689,7 +686,7 @@ if generar_gif:
     if not played:
         st.warning("No se pudo reproducir el video en línea. Descarga el MP4 o GIF de arriba.")
 
-    # Notes
+# Notes
 st.markdown("""
 **Notas**
 
