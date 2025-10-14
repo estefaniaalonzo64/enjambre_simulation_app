@@ -570,121 +570,126 @@ if ejecutar and zonas:
 
     # Summary
     
-st.subheader("Resumen con unidades y mejoras")
-df = pd.DataFrame({
-    "alcaldia": [z.alcaldia for z in zonas],
-    "baseline_final": A0f,
-    "desazolve_final": A1f,
-    "impact": impact,
-    "intervened": mask,
-    "area_m2": [z.area_m2 for z in zonas],
-})
-# Conversión de unidades
-if depth_per_unit_mm > 0:
-    df["baseline_mm"] = df["baseline_final"] * depth_per_unit_mm
-    df["desazolve_mm"] = df["desazolve_final"] * depth_per_unit_mm
-    df["impact_mm"] = df["impact"] * depth_per_unit_mm
-    df["impact_m"] = df["impact_mm"] / 1000.0
-    df["vol_impact_m3"] = df["impact_m"] * df["area_m2"]
-    prof_base_label = "Profundidad media — base [mm]"
-    prof_des_label  = "Profundidad media — desazolve [mm]"
-    red_med_label   = "Reducción media [mm]"
-    vol_tot_label   = "Volumen total evitado (≥0) [m³]"
-else:
-    df["baseline_u"] = df["baseline_final"]
-    df["desazolve_u"] = df["desazolve_final"]
-    df["impact_u"] = df["impact"]
-    df["vol_impact_um2"] = df["impact_u"] * df["area_m2"]
-    prof_base_label = "Profundidad media — base [u]"
-    prof_des_label  = "Profundidad media — desazolve [u]"
-    red_med_label   = "Reducción media [u]"
-    vol_tot_label   = "Volumen total evitado (≥0) [u·m²]"
-
-def _percent(a, b):
-    return (a / b * 100.0) if b != 0 else 0.0
-
-grupos = []
-for alc, g in df.groupby("alcaldia"):
-    if depth_per_unit_mm > 0:
-        base_mean = g["baseline_mm"].mean()
-        des_mean  = g["desazolve_mm"].mean()
-        red_mean  = g["impact_mm"].mean()
-        vol_tot   = g["vol_impact_m3"].sum()
-    else:
-        base_mean = g["baseline_u"].mean()
-        des_mean  = g["desazolve_u"].mean()
-        red_mean  = g["impact_u"].mean()
-        vol_tot   = g["vol_impact_um2"].sum()
-    pct = _percent(red_mean, base_mean)
-    grupos.append({
-        "Alcaldía": alc,
-        "Zonas (n)": len(g),
-        prof_base_label: base_mean,
-        prof_des_label: des_mean,
-        red_med_label: red_mean,
-        "Reducción media [%]": pct,
-        vol_tot_label: vol_tot,
+    st.subheader("Resumen con unidades y mejoras")
+    df = pd.DataFrame({
+        "alcaldia": [z.alcaldia for z in zonas],
+        "baseline_final": A0f,
+        "desazolve_final": A1f,
+        "impact": impact,
+        "intervened": mask,
+        "area_m2": [z.area_m2 for z in zonas],
     })
-resumen = pd.DataFrame(grupos).sort_values(vol_tot_label, ascending=False)
+    # Conversión de unidades
+    if depth_per_unit_mm > 0:
+        df["baseline_mm"] = df["baseline_final"] * depth_per_unit_mm
+        df["desazolve_mm"] = df["desazolve_final"] * depth_per_unit_mm
+        df["impact_mm"] = df["impact"] * depth_per_unit_mm
+        df["impact_m"] = df["impact_mm"] / 1000.0
+        df["vol_impact_m3"] = df["impact_m"] * df["area_m2"]
+        prof_base_label = "Profundidad media — base [mm]"
+        prof_des_label  = "Profundidad media — desazolve [mm]"
+        red_med_label   = "Reducción media [mm]"
+        vol_tot_label   = "Volumen total evitado (≥0) [m³]"
+    else:
+        df["baseline_u"] = df["baseline_final"]
+        df["desazolve_u"] = df["desazolve_final"]
+        df["impact_u"] = df["impact"]
+        df["vol_impact_um2"] = df["impact_u"] * df["area_m2"]
+        prof_base_label = "Profundidad media — base [u]"
+        prof_des_label  = "Profundidad media — desazolve [u]"
+        red_med_label   = "Reducción media [u]"
+        vol_tot_label   = "Volumen total evitado (≥0) [u·m²]"
+    
+    def _percent(a, b):
+        return (a / b * 100.0) if b != 0 else 0.0
+    
+    grupos = []
+    for alc, g in df.groupby("alcaldia"):
+        if depth_per_unit_mm > 0:
+            base_mean = g["baseline_mm"].mean()
+            des_mean  = g["desazolve_mm"].mean()
+            red_mean  = g["impact_mm"].mean()
+            vol_tot   = g["vol_impact_m3"].sum()
+        else:
+            base_mean = g["baseline_u"].mean()
+            des_mean  = g["desazolve_u"].mean()
+            red_mean  = g["impact_u"].mean()
+            vol_tot   = g["vol_impact_um2"].sum()
+        pct = _percent(red_mean, base_mean)
+        grupos.append({
+            "Alcaldía": alc,
+            "Zonas (n)": len(g),
+            prof_base_label: base_mean,
+            prof_des_label: des_mean,
+            red_med_label: red_mean,
+            "Reducción media [%]": pct,
+            vol_tot_label: vol_tot,
+        })
+    resumen = pd.DataFrame(grupos).sort_values(vol_tot_label, ascending=False)
+    
+    def _style_green(value: float) -> str:
+        try:
+            return 'color: green' if float(value) > 0 else ''
+        except Exception:
+            return ''
 
-def _style_green(v):
-    try:
-        return 'color: green' if float(v) > 0 else ''
-    except Exception:
-        return ''
-
-st.dataframe(
-    resumen.style            .format({
+    styler = (
+        resumen.style
+        .format({
             prof_base_label: '{:,.2f}',
             prof_des_label: '{:,.2f}',
             red_med_label: '{:,.2f}',
             "Reducción media [%]": '{:,.2f}',
             vol_tot_label: '{:,.2f}',
-        })            .applymap(_style_green, subset=[red_med_label, "Reducción media [%]", vol_tot_label]),
-    use_container_width=True
-)
+        })
+        .map(_style_green, subset=[red_med_label, "Reducción media [%]", vol_tot_label])
+    )
 
-csv_bytes = resumen.to_csv(index=False).encode('utf-8')
-st.download_button("Descargar CSV del resumen", data=csv_bytes, file_name="resumen_con_unidades.csv", mime="text/csv")
-
+    st.dataframe(styler, use_container_width=True)
     
-# Optional side-by-side animation — show as VIDEO in the app
-if generar_gif:
-    st.subheader("Relleno lado a lado: Base (izquierda) vs Desazolve (derecha)")
-
-    overlay_opts = {
-        "show": show_overlay,
-        "items": overlay_items,
-        "minutes_per_frame": minutes_per_frame,
-        "depth_per_unit_mm": depth_per_unit_mm,   # NEW
-        "area_weighted": area_weighted,           # NEW
-    }
-    fig, anim = _build_side_by_side_anim(zonas, A0, A1, fps=8, overlay_opts=overlay_opts)
-
-
-
-    # 1) Try MP4 first (played by st.video)
-    mp4_bytes = _save_anim_to_mp4_bytes(fig, anim, fps=8, dpi=130, bitrate=1800)
-    played = False
-    if mp4_bytes:
-        st.video(mp4_bytes)
-        st.download_button("Descargar MP4", data=mp4_bytes,
-                        file_name="baseline_vs_desazolve.mp4", mime="video/mp4")
-        played = True
-
-    # 2) If MP4 fails (no ffmpeg), embed JSHTML player (no external deps)
-    if not played:
-        if _embed_anim_jshtml(fig, anim):
-            st.caption("Playing inline via HTML (no ffmpeg).")
+    csv_bytes = resumen.to_csv(index=False).encode('utf-8')
+    st.download_button("Descargar CSV del resumen", data=csv_bytes, file_name="resumen_con_unidades.csv", mime="text/csv")
+    
+        
+    # Optional side-by-side animation — mostrar como VIDEO en la app
+    if generar_gif:
+        st.subheader("Relleno lado a lado: Base (izquierda) vs Desazolve (derecha)")
+    
+        overlay_opts = {
+            "show": show_overlay,
+            "items": overlay_items,
+            "minutes_per_frame": minutes_per_frame,
+            "depth_per_unit_mm": depth_per_unit_mm,   # NEW
+            "area_weighted": area_weighted,           # NEW
+        }
+        fig, anim = _build_side_by_side_anim(zonas, A0, A1, fps=8, overlay_opts=overlay_opts)
+    
+    
+    
+        # 1) Try MP4 first (played by st.video)
+        mp4_bytes = _save_anim_to_mp4_bytes(fig, anim, fps=8, dpi=130, bitrate=1800)
+        played = False
+        if mp4_bytes:
+            st.video(mp4_bytes)
+            st.download_button("Descargar MP4", data=mp4_bytes,
+                            file_name="baseline_vs_desazolve.mp4", mime="video/mp4")
             played = True
-
-    # 3) Always provide a GIF as a download for sharing (but don't try to play it inline)
-    gif_bytes = _save_anim_to_gif_bytes(fig, anim, fps=8, dpi=130)
-    st.download_button("Descargar GIF (compatibilidad)", data=gif_bytes,
-                    file_name="baseline_vs_desazolve.gif", mime="image/gif")
-
-    if not played:
-        st.warning("No se pudo reproducir el video en línea. Descarga el MP4 o GIF de arriba.")
+    
+        # 2) If MP4 fails (no ffmpeg), embed JSHTML player (no external deps)
+        if not played:
+            if _embed_anim_jshtml(fig, anim):
+                st.caption("Playing inline via HTML (no ffmpeg).")
+                played = True
+    
+        # 3) Always provide a GIF as a download for sharing (but don't try to play it inline)
+        gif_bytes = _save_anim_to_gif_bytes(fig, anim, fps=8, dpi=130)
+        st.download_button("Descargar GIF (compatibilidad)", data=gif_bytes,
+                        file_name="baseline_vs_desazolve.gif", mime="image/gif")
+    
+        if not played:
+            st.warning("No se pudo reproducir el video en línea. Descarga el MP4 o GIF de arriba.")
+elif ejecutar:
+    st.warning("Carga un dataset válido antes de ejecutar la simulación.")
 
 # Notes
 st.markdown("""
