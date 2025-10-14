@@ -513,12 +513,30 @@ except Exception as e:
     st.error(f"Error loading data: {e}")
 
 
-if ejecutar and zonas:
+delegacion_options = ["Todas las delegaciones"]
+if zonas:
+    delegacion_options.extend(sorted({z.alcaldia for z in zonas}))
+
+st.sidebar.header("5) Delegación")
+selected_delegacion = st.sidebar.selectbox(
+    "Delegación a simular",
+    delegacion_options,
+    index=0,
+    help="Elige una delegación específica o simula sobre todas las disponibles en el dataset."
+)
+
+if zonas and selected_delegacion != "Todas las delegaciones":
+    zonas_filtradas = [z for z in zonas if z.alcaldia == selected_delegacion]
+else:
+    zonas_filtradas = zonas
+
+
+if ejecutar and zonas_filtradas:
     # --------- Simulate ----------
-    R = generate_rain_series(zonas, frames=frames, semilla_azar=semilla_azar, coef_escorrentia=coef_escorrentia)
+    R = generate_rain_series(zonas_filtradas, frames=frames, semilla_azar=semilla_azar, coef_escorrentia=coef_escorrentia)
 
     cap_baseline = derive_capacity(
-        zonas, R,
+        zonas_filtradas, R,
         nivel_capacidad_base=nivel_capacidad_base,
         efecto_riesgo=efecto_riesgo,
         porcentaje_taponamiento=porcentaje_taponamiento / 100.0
@@ -530,11 +548,11 @@ if ejecutar and zonas:
     # Interventions
     mask = pick_targets(A0f, proporcion_intervencion=proporcion_intervencion)
     # Effective porcentaje_taponamiento after desazolve (apply reduction only in intervened zonas)
-    p_tap_vec = np.full(len(zonas), porcentaje_taponamiento / 100.0)
+    p_tap_vec = np.full(len(zonas_filtradas), porcentaje_taponamiento / 100.0)
     p_tap_vec[mask] = np.clip(p_tap_vec[mask] - (reduccion_taponamiento / 100.0), 0.0, 1.0)
 
     cap_desaz = derive_capacity(
-        zonas, R,
+        zonas_filtradas, R,
         nivel_capacidad_base=nivel_capacidad_base * (1.0 + delta_capacidad),   # multiplicative boost δ
         efecto_riesgo=efecto_riesgo,
         porcentaje_taponamiento=0.0  # we pass 0 here and use p_tap_vec multiplicatively below
@@ -550,21 +568,21 @@ if ejecutar and zonas:
     colA, colB, colC, colD = st.columns(4)
     with colA:
         st.caption("Boundaries")
-        st.image(_render_boundaries_png(zonas), use_column_width=True)
+        st.image(_render_boundaries_png(zonas_filtradas), use_column_width=True)
     vmin, vmax = 0.0, float(max(A0f.max(), A1f.max()) + 1e-9)
     with colB:
         st.caption("Línea base — Profundidad de inundación acumulada")
-        png = _render_choropleth_png(zonas, A0f, "Control: Profundidad final", vmin=vmin, vmax=vmax, cmap_name='Blues', cbar_label=("Profundidad [mm]" if depth_per_unit_mm>0 else "Profundidad [u]"))
+        png = _render_choropleth_png(zonas_filtradas, A0f, "Control: Profundidad final", vmin=vmin, vmax=vmax, cmap_name='Blues', cbar_label=("Profundidad [mm]" if depth_per_unit_mm>0 else "Profundidad [u]"))
         st.image(png, use_column_width=True)
         st.download_button("Descargar PNG", data=png, file_name="baseline_final.png", mime="image/png")
     with colC:
         st.caption("Desazolve — Profundidad de inundación acumulada")
-        png = _render_choropleth_png(zonas, A1f, "Desazolve: Profundidad final", vmin=vmin, vmax=vmax, cmap_name='Blues', cbar_label=("Profundidad [mm]" if depth_per_unit_mm>0 else "Profundidad [u]"))
+        png = _render_choropleth_png(zonas_filtradas, A1f, "Desazolve: Profundidad final", vmin=vmin, vmax=vmax, cmap_name='Blues', cbar_label=("Profundidad [mm]" if depth_per_unit_mm>0 else "Profundidad [u]"))
         st.image(png, use_column_width=True)
         st.download_button("Descargar PNG", data=png, file_name="desazolve_final.png", mime="image/png")
     with colD:
         st.caption("Impacto — Reducción (Base − Desazolve)")
-        png = _render_choropleth_png(zonas, impact, "Impacto (Base − Desazolve): Reducción", vmin=0.0, vmax=float(impact.max()+1e-9), cmap_name='Greens', cbar_label=("Reducción [mm]" if depth_per_unit_mm>0 else "Reducción [u]"))
+        png = _render_choropleth_png(zonas_filtradas, impact, "Impacto (Base − Desazolve): Reducción", vmin=0.0, vmax=float(impact.max()+1e-9), cmap_name='Greens', cbar_label=("Reducción [mm]" if depth_per_unit_mm>0 else "Reducción [u]"))
         st.image(png, use_column_width=True)
         st.download_button("Descargar PNG", data=png, file_name="impact_reduction.png", mime="image/png")
 
