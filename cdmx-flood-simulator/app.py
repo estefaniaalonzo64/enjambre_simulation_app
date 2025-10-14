@@ -587,15 +587,15 @@ if ejecutar and zonas_filtradas:
         st.download_button("Descargar PNG", data=png, file_name="impact_reduction.png", mime="image/png")
 
     # Summary
-
+    
     st.subheader("Resumen con unidades y mejoras")
     df = pd.DataFrame({
-        "alcaldia": [z.alcaldia for z in zonas_filtradas],
+        "alcaldia": [z.alcaldia for z in zonas],
         "baseline_final": A0f,
         "desazolve_final": A1f,
         "impact": impact,
         "intervened": mask,
-        "area_m2": [z.area_m2 for z in zonas_filtradas],
+        "area_m2": [z.area_m2 for z in zonas],
     })
     # Conversión de unidades
     if depth_per_unit_mm > 0:
@@ -680,7 +680,7 @@ if ejecutar and zonas_filtradas:
             "depth_per_unit_mm": depth_per_unit_mm,   # NEW
             "area_weighted": area_weighted,           # NEW
         }
-        fig, anim = _build_side_by_side_anim(zonas_filtradas, A0, A1, fps=8, overlay_opts=overlay_opts)
+        fig, anim = _build_side_by_side_anim(zonas, A0, A1, fps=8, overlay_opts=overlay_opts)
     
     
     
@@ -705,11 +705,9 @@ if ejecutar and zonas_filtradas:
                         file_name="baseline_vs_desazolve.gif", mime="image/gif")
     
         if not played:
-            st.info("No se pudo reproducir el video en línea. Descarga el MP4 o GIF de arriba.")
-elif ejecutar and zonas:
-    st.info("La delegación seleccionada no contiene zonas en el dataset cargado.")
+            st.warning("No se pudo reproducir el video en línea. Descarga el MP4 o GIF de arriba.")
 elif ejecutar:
-    st.info("Carga un dataset válido antes de ejecutar la simulación.")
+    st.warning("Carga un dataset válido antes de ejecutar la simulación.")
 
 # Notes
 st.markdown("""
