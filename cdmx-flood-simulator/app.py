@@ -513,12 +513,30 @@ except Exception as e:
     st.error(f"Error loading data: {e}")
 
 
-if ejecutar and zonas:
+delegacion_options = ["Todas las delegaciones"]
+if zonas:
+    delegacion_options.extend(sorted({z.alcaldia for z in zonas}))
+
+st.sidebar.header("5) Delegación")
+selected_delegacion = st.sidebar.selectbox(
+    "Delegación a simular",
+    delegacion_options,
+    index=0,
+    help="Elige una delegación específica o simula sobre todas las disponibles en el dataset."
+)
+
+if zonas and selected_delegacion != "Todas las delegaciones":
+    zonas_filtradas = [z for z in zonas if z.alcaldia == selected_delegacion]
+else:
+    zonas_filtradas = zonas
+
+
+if ejecutar and zonas_filtradas:
     # --------- Simulate ----------
-    R = generate_rain_series(zonas, frames=frames, semilla_azar=semilla_azar, coef_escorrentia=coef_escorrentia)
+    R = generate_rain_series(zonas_filtradas, frames=frames, semilla_azar=semilla_azar, coef_escorrentia=coef_escorrentia)
 
     cap_baseline = derive_capacity(
-        zonas, R,
+        zonas_filtradas, R,
         nivel_capacidad_base=nivel_capacidad_base,
         efecto_riesgo=efecto_riesgo,
         porcentaje_taponamiento=porcentaje_taponamiento / 100.0
@@ -530,11 +548,11 @@ if ejecutar and zonas:
     # Interventions
     mask = pick_targets(A0f, proporcion_intervencion=proporcion_intervencion)
     # Effective porcentaje_taponamiento after desazolve (apply reduction only in intervened zonas)
-    p_tap_vec = np.full(len(zonas), porcentaje_taponamiento / 100.0)
+    p_tap_vec = np.full(len(zonas_filtradas), porcentaje_taponamiento / 100.0)
     p_tap_vec[mask] = np.clip(p_tap_vec[mask] - (reduccion_taponamiento / 100.0), 0.0, 1.0)
 
     cap_desaz = derive_capacity(
-        zonas, R,
+        zonas_filtradas, R,
         nivel_capacidad_base=nivel_capacidad_base * (1.0 + delta_capacidad),   # multiplicative boost δ
         efecto_riesgo=efecto_riesgo,
         porcentaje_taponamiento=0.0  # we pass 0 here and use p_tap_vec multiplicatively below
@@ -550,141 +568,148 @@ if ejecutar and zonas:
     colA, colB, colC, colD = st.columns(4)
     with colA:
         st.caption("Boundaries")
-        st.image(_render_boundaries_png(zonas), use_column_width=True)
+        st.image(_render_boundaries_png(zonas_filtradas), use_column_width=True)
     vmin, vmax = 0.0, float(max(A0f.max(), A1f.max()) + 1e-9)
     with colB:
         st.caption("Línea base — Profundidad de inundación acumulada")
-        png = _render_choropleth_png(zonas, A0f, "Control: Profundidad final", vmin=vmin, vmax=vmax, cmap_name='Blues', cbar_label=("Profundidad [mm]" if depth_per_unit_mm>0 else "Profundidad [u]"))
+        png = _render_choropleth_png(zonas_filtradas, A0f, "Control: Profundidad final", vmin=vmin, vmax=vmax, cmap_name='Blues', cbar_label=("Profundidad [mm]" if depth_per_unit_mm>0 else "Profundidad [u]"))
         st.image(png, use_column_width=True)
         st.download_button("Descargar PNG", data=png, file_name="baseline_final.png", mime="image/png")
     with colC:
         st.caption("Desazolve — Profundidad de inundación acumulada")
-        png = _render_choropleth_png(zonas, A1f, "Desazolve: Profundidad final", vmin=vmin, vmax=vmax, cmap_name='Blues', cbar_label=("Profundidad [mm]" if depth_per_unit_mm>0 else "Profundidad [u]"))
+        png = _render_choropleth_png(zonas_filtradas, A1f, "Desazolve: Profundidad final", vmin=vmin, vmax=vmax, cmap_name='Blues', cbar_label=("Profundidad [mm]" if depth_per_unit_mm>0 else "Profundidad [u]"))
         st.image(png, use_column_width=True)
         st.download_button("Descargar PNG", data=png, file_name="desazolve_final.png", mime="image/png")
     with colD:
         st.caption("Impacto — Reducción (Base − Desazolve)")
-        png = _render_choropleth_png(zonas, impact, "Impacto (Base − Desazolve): Reducción", vmin=0.0, vmax=float(impact.max()+1e-9), cmap_name='Greens', cbar_label=("Reducción [mm]" if depth_per_unit_mm>0 else "Reducción [u]"))
+        png = _render_choropleth_png(zonas_filtradas, impact, "Impacto (Base − Desazolve): Reducción", vmin=0.0, vmax=float(impact.max()+1e-9), cmap_name='Greens', cbar_label=("Reducción [mm]" if depth_per_unit_mm>0 else "Reducción [u]"))
         st.image(png, use_column_width=True)
         st.download_button("Descargar PNG", data=png, file_name="impact_reduction.png", mime="image/png")
 
     # Summary
-    
-st.subheader("Resumen con unidades y mejoras")
-df = pd.DataFrame({
-    "alcaldia": [z.alcaldia for z in zonas],
-    "baseline_final": A0f,
-    "desazolve_final": A1f,
-    "impact": impact,
-    "intervened": mask,
-    "area_m2": [z.area_m2 for z in zonas],
-})
-# Conversión de unidades
-if depth_per_unit_mm > 0:
-    df["baseline_mm"] = df["baseline_final"] * depth_per_unit_mm
-    df["desazolve_mm"] = df["desazolve_final"] * depth_per_unit_mm
-    df["impact_mm"] = df["impact"] * depth_per_unit_mm
-    df["impact_m"] = df["impact_mm"] / 1000.0
-    df["vol_impact_m3"] = df["impact_m"] * df["area_m2"]
-    prof_base_label = "Profundidad media — base [mm]"
-    prof_des_label  = "Profundidad media — desazolve [mm]"
-    red_med_label   = "Reducción media [mm]"
-    vol_tot_label   = "Volumen total evitado (≥0) [m³]"
-else:
-    df["baseline_u"] = df["baseline_final"]
-    df["desazolve_u"] = df["desazolve_final"]
-    df["impact_u"] = df["impact"]
-    df["vol_impact_um2"] = df["impact_u"] * df["area_m2"]
-    prof_base_label = "Profundidad media — base [u]"
-    prof_des_label  = "Profundidad media — desazolve [u]"
-    red_med_label   = "Reducción media [u]"
-    vol_tot_label   = "Volumen total evitado (≥0) [u·m²]"
 
-def _percent(a, b):
-    return (a / b * 100.0) if b != 0 else 0.0
-
-grupos = []
-for alc, g in df.groupby("alcaldia"):
-    if depth_per_unit_mm > 0:
-        base_mean = g["baseline_mm"].mean()
-        des_mean  = g["desazolve_mm"].mean()
-        red_mean  = g["impact_mm"].mean()
-        vol_tot   = g["vol_impact_m3"].sum()
-    else:
-        base_mean = g["baseline_u"].mean()
-        des_mean  = g["desazolve_u"].mean()
-        red_mean  = g["impact_u"].mean()
-        vol_tot   = g["vol_impact_um2"].sum()
-    pct = _percent(red_mean, base_mean)
-    grupos.append({
-        "Alcaldía": alc,
-        "Zonas (n)": len(g),
-        prof_base_label: base_mean,
-        prof_des_label: des_mean,
-        red_med_label: red_mean,
-        "Reducción media [%]": pct,
-        vol_tot_label: vol_tot,
+    st.subheader("Resumen con unidades y mejoras")
+    df = pd.DataFrame({
+        "alcaldia": [z.alcaldia for z in zonas_filtradas],
+        "baseline_final": A0f,
+        "desazolve_final": A1f,
+        "impact": impact,
+        "intervened": mask,
+        "area_m2": [z.area_m2 for z in zonas_filtradas],
     })
-resumen = pd.DataFrame(grupos).sort_values(vol_tot_label, ascending=False)
+    # Conversión de unidades
+    if depth_per_unit_mm > 0:
+        df["baseline_mm"] = df["baseline_final"] * depth_per_unit_mm
+        df["desazolve_mm"] = df["desazolve_final"] * depth_per_unit_mm
+        df["impact_mm"] = df["impact"] * depth_per_unit_mm
+        df["impact_m"] = df["impact_mm"] / 1000.0
+        df["vol_impact_m3"] = df["impact_m"] * df["area_m2"]
+        prof_base_label = "Profundidad media — base [mm]"
+        prof_des_label  = "Profundidad media — desazolve [mm]"
+        red_med_label   = "Reducción media [mm]"
+        vol_tot_label   = "Volumen total evitado (≥0) [m³]"
+    else:
+        df["baseline_u"] = df["baseline_final"]
+        df["desazolve_u"] = df["desazolve_final"]
+        df["impact_u"] = df["impact"]
+        df["vol_impact_um2"] = df["impact_u"] * df["area_m2"]
+        prof_base_label = "Profundidad media — base [u]"
+        prof_des_label  = "Profundidad media — desazolve [u]"
+        red_med_label   = "Reducción media [u]"
+        vol_tot_label   = "Volumen total evitado (≥0) [u·m²]"
+    
+    def _percent(a, b):
+        return (a / b * 100.0) if b != 0 else 0.0
+    
+    grupos = []
+    for alc, g in df.groupby("alcaldia"):
+        if depth_per_unit_mm > 0:
+            base_mean = g["baseline_mm"].mean()
+            des_mean  = g["desazolve_mm"].mean()
+            red_mean  = g["impact_mm"].mean()
+            vol_tot   = g["vol_impact_m3"].sum()
+        else:
+            base_mean = g["baseline_u"].mean()
+            des_mean  = g["desazolve_u"].mean()
+            red_mean  = g["impact_u"].mean()
+            vol_tot   = g["vol_impact_um2"].sum()
+        pct = _percent(red_mean, base_mean)
+        grupos.append({
+            "Alcaldía": alc,
+            "Zonas (n)": len(g),
+            prof_base_label: base_mean,
+            prof_des_label: des_mean,
+            red_med_label: red_mean,
+            "Reducción media [%]": pct,
+            vol_tot_label: vol_tot,
+        })
+    resumen = pd.DataFrame(grupos).sort_values(vol_tot_label, ascending=False)
+    
+    def _style_green(value: float) -> str:
+        try:
+            return 'color: green' if float(value) > 0 else ''
+        except Exception:
+            return ''
 
-def _style_green(v):
-    try:
-        return 'color: green' if float(v) > 0 else ''
-    except Exception:
-        return ''
-
-st.dataframe(
-    resumen.style            .format({
+    styler = (
+        resumen.style
+        .format({
             prof_base_label: '{:,.2f}',
             prof_des_label: '{:,.2f}',
             red_med_label: '{:,.2f}',
             "Reducción media [%]": '{:,.2f}',
             vol_tot_label: '{:,.2f}',
-        })            .applymap(_style_green, subset=[red_med_label, "Reducción media [%]", vol_tot_label]),
-    use_container_width=True
-)
+        })
+        .map(_style_green, subset=[red_med_label, "Reducción media [%]", vol_tot_label])
+    )
 
-csv_bytes = resumen.to_csv(index=False).encode('utf-8')
-st.download_button("Descargar CSV del resumen", data=csv_bytes, file_name="resumen_con_unidades.csv", mime="text/csv")
-
+    st.dataframe(styler, use_container_width=True)
     
-# Optional side-by-side animation — show as VIDEO in the app
-if generar_gif:
-    st.subheader("Relleno lado a lado: Base (izquierda) vs Desazolve (derecha)")
-
-    overlay_opts = {
-        "show": show_overlay,
-        "items": overlay_items,
-        "minutes_per_frame": minutes_per_frame,
-        "depth_per_unit_mm": depth_per_unit_mm,   # NEW
-        "area_weighted": area_weighted,           # NEW
-    }
-    fig, anim = _build_side_by_side_anim(zonas, A0, A1, fps=8, overlay_opts=overlay_opts)
-
-
-
-    # 1) Try MP4 first (played by st.video)
-    mp4_bytes = _save_anim_to_mp4_bytes(fig, anim, fps=8, dpi=130, bitrate=1800)
-    played = False
-    if mp4_bytes:
-        st.video(mp4_bytes)
-        st.download_button("Descargar MP4", data=mp4_bytes,
-                        file_name="baseline_vs_desazolve.mp4", mime="video/mp4")
-        played = True
-
-    # 2) If MP4 fails (no ffmpeg), embed JSHTML player (no external deps)
-    if not played:
-        if _embed_anim_jshtml(fig, anim):
-            st.caption("Playing inline via HTML (no ffmpeg).")
+    csv_bytes = resumen.to_csv(index=False).encode('utf-8')
+    st.download_button("Descargar CSV del resumen", data=csv_bytes, file_name="resumen_con_unidades.csv", mime="text/csv")
+    
+        
+    # Optional side-by-side animation — mostrar como VIDEO en la app
+    if generar_gif:
+        st.subheader("Relleno lado a lado: Base (izquierda) vs Desazolve (derecha)")
+    
+        overlay_opts = {
+            "show": show_overlay,
+            "items": overlay_items,
+            "minutes_per_frame": minutes_per_frame,
+            "depth_per_unit_mm": depth_per_unit_mm,   # NEW
+            "area_weighted": area_weighted,           # NEW
+        }
+        fig, anim = _build_side_by_side_anim(zonas_filtradas, A0, A1, fps=8, overlay_opts=overlay_opts)
+    
+    
+    
+        # 1) Try MP4 first (played by st.video)
+        mp4_bytes = _save_anim_to_mp4_bytes(fig, anim, fps=8, dpi=130, bitrate=1800)
+        played = False
+        if mp4_bytes:
+            st.video(mp4_bytes)
+            st.download_button("Descargar MP4", data=mp4_bytes,
+                            file_name="baseline_vs_desazolve.mp4", mime="video/mp4")
             played = True
-
-    # 3) Always provide a GIF as a download for sharing (but don't try to play it inline)
-    gif_bytes = _save_anim_to_gif_bytes(fig, anim, fps=8, dpi=130)
-    st.download_button("Descargar GIF (compatibilidad)", data=gif_bytes,
-                    file_name="baseline_vs_desazolve.gif", mime="image/gif")
-
-    if not played:
-        st.warning("No se pudo reproducir el video en línea. Descarga el MP4 o GIF de arriba.")
+    
+        # 2) If MP4 fails (no ffmpeg), embed JSHTML player (no external deps)
+        if not played:
+            if _embed_anim_jshtml(fig, anim):
+                st.caption("Playing inline via HTML (no ffmpeg).")
+                played = True
+    
+        # 3) Always provide a GIF as a download for sharing (but don't try to play it inline)
+        gif_bytes = _save_anim_to_gif_bytes(fig, anim, fps=8, dpi=130)
+        st.download_button("Descargar GIF (compatibilidad)", data=gif_bytes,
+                        file_name="baseline_vs_desazolve.gif", mime="image/gif")
+    
+        if not played:
+            st.info("No se pudo reproducir el video en línea. Descarga el MP4 o GIF de arriba.")
+elif ejecutar and zonas:
+    st.info("La delegación seleccionada no contiene zonas en el dataset cargado.")
+elif ejecutar:
+    st.info("Carga un dataset válido antes de ejecutar la simulación.")
 
 # Notes
 st.markdown("""
