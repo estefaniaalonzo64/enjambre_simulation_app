@@ -590,12 +590,12 @@ if ejecutar and zonas_filtradas:
     
     st.subheader("Resumen con unidades y mejoras")
     df = pd.DataFrame({
-        "alcaldia": [z.alcaldia for z in zonas],
+        "alcaldia": [z.alcaldia for z in zonas_filtradas],
         "baseline_final": A0f,
         "desazolve_final": A1f,
         "impact": impact,
         "intervened": mask,
-        "area_m2": [z.area_m2 for z in zonas],
+        "area_m2": [z.area_m2 for z in zonas_filtradas],
     })
     # Conversión de unidades
     if depth_per_unit_mm > 0:
@@ -680,7 +680,7 @@ if ejecutar and zonas_filtradas:
             "depth_per_unit_mm": depth_per_unit_mm,   # NEW
             "area_weighted": area_weighted,           # NEW
         }
-        fig, anim = _build_side_by_side_anim(zonas, A0, A1, fps=8, overlay_opts=overlay_opts)
+        fig, anim = _build_side_by_side_anim(zonas_filtradas, A0, A1, fps=8, overlay_opts=overlay_opts)
     
     
     
